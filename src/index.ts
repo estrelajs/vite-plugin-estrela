@@ -149,6 +149,7 @@ const compileEstrela = (code: string, filePath: string) => {
   return {
     code: ms.toString(),
     map: ms.generateMap({
+      hires: true,
       source: filename,
       file: filename + ".map",
       includeContent: true,
