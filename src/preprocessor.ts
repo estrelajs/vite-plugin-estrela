@@ -19,7 +19,7 @@ interface ElementsResult {
 
 export function getElements(
   source: ts.SourceFile,
-  skipRootJsx?: boolean
+  skipRoot?: boolean
 ): ElementsResult {
   let script: ts.JsxElement | undefined = undefined;
   let style: ts.JsxElement | undefined = undefined;
@@ -27,9 +27,9 @@ export function getElements(
   const jsxElements: Range[] = [];
   const jsxExpressions: Range[] = [];
 
-  const visitElements = (node: ts.Node, isInJsxTree?: boolean) => {
+  const visitElements = (node: ts.Node, isInClosure: boolean) => {
     // check for <script>, <style> and <template>
-    if (!isInJsxTree && ts.isJsxElement(node)) {
+    if (ts.isJsxElement(node)) {
       const isTagName = (tag: string) =>
         ts.isIdentifier(node.openingElement.tagName) &&
         node.openingElement.tagName.text === tag;
@@ -44,27 +44,27 @@ export function getElements(
       }
       if (isTagName('template')) {
         template = node;
-        node.forEachChild(visitElements);
+        node.forEachChild(node => visitElements(node, isInClosure));
         return;
       }
     }
 
     // get JsxElements respecting "skipRootJsx" logic
-    if (ts.isJsxElement(node) && (!skipRootJsx || isInJsxTree)) {
+    if (ts.isJsxElement(node) && isInClosure) {
       jsxElements.push(getRange(node));
+      isInClosure = false;
     }
 
     // get JsxExpressions
     if (ts.isJsxExpression(node)) {
       jsxExpressions.push(getRange(node));
+      isInClosure = true;
     }
 
     // iterate over children
-    node.forEachChild(child =>
-      visitElements(child, isInJsxTree || ts.isJsxElement(node))
-    );
+    node.forEachChild(child => visitElements(child, isInClosure));
   };
-  visitElements(source);
+  visitElements(source, !skipRoot);
 
   return {
     script,
@@ -97,10 +97,16 @@ export function preprocessScript(tag: string, script: string) {
   const importMap = getImportMap(source);
   const firstStatementIndex = Object.keys(importMap).length;
 
-  ms.prependLeft(
-    getRange(source.statements[firstStatementIndex]).start(),
-    `${firstStatementIndex === 0 ? '' : '\n'}defineElement("${tag}", () => {\n`
-  );
+  if (source.statements[firstStatementIndex]) {
+    ms.prependLeft(
+      getRange(source.statements[firstStatementIndex]).start(),
+      `${
+        firstStatementIndex === 0 ? '' : '\n'
+      }defineElement("${tag}", () => {\n`
+    );
+  } else {
+    ms.prepend(`defineElement("${tag}", () => {\n`);
+  }
   ms.prepend('import { defineElement, html, css } from "estrela";\n');
 
   const { jsxElements, jsxExpressions } = getElements(source);

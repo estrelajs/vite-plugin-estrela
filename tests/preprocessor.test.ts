@@ -6,14 +6,14 @@ import {
 } from '../src/preprocessor';
 import { createSource } from '../src/utils';
 
-describe('preprocessor', () => {
-  const linesExtractor = (str: string) =>
-    str
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => !/^(\s+)?$/.test(line));
+const linesExtractor = (str: string) =>
+  str
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => !/^(\s+)?$/.test(line));
 
-  test('getElements - no style and template tags', () => {
+describe('getElements', () => {
+  test('no style and template tags', () => {
     const content = `
       <script tag="app-root">
         import { state } from 'estrela';
@@ -44,7 +44,7 @@ describe('preprocessor', () => {
     expect(result2.jsxElements).toHaveLength(0);
   });
 
-  test('getElements - complete', () => {
+  test('complete', () => {
     const content = `
       <script tag="app-root">
         import { state } from 'estrela';
@@ -81,8 +81,10 @@ describe('preprocessor', () => {
     expect(result1.jsxElements).toHaveLength(1);
     expect(result2.jsxElements).toHaveLength(0);
   });
+});
 
-  test('preprocessScript - jsx', () => {
+describe('eprocessScript', () => {
+  test('jsx', () => {
     const script = `
       const data = <div>Count is { count }</div>`;
 
@@ -96,7 +98,7 @@ describe('preprocessor', () => {
     expect(linesExtractor(result)).toEqual(linesExtractor(expected));
   });
 
-  test('preprocessScript - prop', () => {
+  test('prop', () => {
     const script = `
       import { prop } from 'estrela';
       const count = prop<number>();`;
@@ -112,7 +114,7 @@ describe('preprocessor', () => {
     expect(linesExtractor(result)).toEqual(linesExtractor(expected));
   });
 
-  test('preprocessScript - emitter', () => {
+  test('emitter', () => {
     const script = `
       import { emitter } from 'estrela';
       const count = emitter<number>({ async: true });`;
@@ -127,8 +129,10 @@ describe('preprocessor', () => {
 
     expect(linesExtractor(result)).toEqual(linesExtractor(expected));
   });
+});
 
-  test('preprocessFile - script', () => {
+describe('preprocessFile', () => {
+  test('script', () => {
     const file = 'app.estrela';
     const content = `
       <script tag="app-root">
@@ -154,7 +158,27 @@ describe('preprocessor', () => {
     expect(linesExtractor(code)).toEqual(linesExtractor(expected));
   });
 
-  test('preprocessFile - no script', () => {
+  test('empty script', () => {
+    const file = 'app.estrela';
+    const content = `
+      <script tag="app-root">
+      </script>
+      <h1>Hello World!</h1>`;
+
+    const { code } = preprocessFile(content, file);
+
+    const expected = `
+      import { defineElement, html, css } from "estrela";
+      defineElement("app-root", () => {
+        return () => html\`
+          <h1>Hello World!</h1>
+        \`;
+      });`;
+
+    expect(linesExtractor(code)).toEqual(linesExtractor(expected));
+  });
+
+  test('no script', () => {
     const file = 'app.estrela';
     const content = `<h1>Hello World!</h1>`;
 
@@ -171,7 +195,7 @@ describe('preprocessor', () => {
     expect(linesExtractor(code)).toEqual(linesExtractor(expected));
   });
 
-  test('preprocessFile - script and style', () => {
+  test('script and style', () => {
     const file = 'app.estrela';
     const content = `
       <script tag="app-root">
@@ -200,6 +224,30 @@ describe('preprocessor', () => {
           color: #555;
         }
       \`);`;
+
+    expect(linesExtractor(code)).toEqual(linesExtractor(expected));
+  });
+
+  test('with hyperlink', () => {
+    const file = 'app.estrela';
+    const content = `
+    <script tag="app-root">
+      import { state } from 'estrela';
+      const name = state('Stranger');
+    </script>
+    <p>Visit <a href="https://www.link.com">{ name }</a>.</p>`;
+
+    const { code } = preprocessFile(content, file);
+
+    const expected = `
+    import { defineElement, html, css } from "estrela";
+    import { state } from 'estrela';
+    defineElement("app-root", () => {
+      const name = state('Stranger');
+      return () => html\`
+        <p>Visit <a href="https://www.link.com">\${ name }</a>.</p>
+      \`;
+    });`;
 
     expect(linesExtractor(code)).toEqual(linesExtractor(expected));
   });
