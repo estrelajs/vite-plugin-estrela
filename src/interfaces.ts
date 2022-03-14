@@ -4,6 +4,6 @@ export interface ImportMap {
 }
 
 export interface Range {
-  start: number;
-  end: number;
+  start: (shift?: number) => number;
+  end: (shift?: number) => number;
 }

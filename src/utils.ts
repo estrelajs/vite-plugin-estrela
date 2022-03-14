@@ -13,6 +13,21 @@ export function createSource(content: string): ts.SourceFile {
   );
 }
 
+export function getElementAttributes(
+  element: ts.JsxElement
+): Record<string, string> {
+  return element.openingElement.attributes.properties.reduce((acc, attr) => {
+    if (
+      ts.isJsxAttribute(attr) &&
+      attr.initializer &&
+      ts.isStringLiteral(attr.initializer)
+    ) {
+      acc[String(attr.name.text)] = attr.initializer.text;
+    }
+    return acc;
+  }, {} as Record<string, string>);
+}
+
 export function getImportMap(
   source: ts.SourceFile
 ): Record<string, ImportMap | undefined>;
@@ -48,17 +63,10 @@ export function getImportMap(
   }, {} as Record<string, ImportMap>);
 }
 
-export function getRange(node: ts.Node, source: ts.SourceFile): Range {
-  const start = node.getStart(source) - 2; // minus fake fragment length
-  const end = node.getEnd() - 2;
+export function getRange(node: ts.Node): Range {
+  const start = (shift = 0) => node.getFullStart() + shift;
+  const end = (shift = 0) => node.getEnd() + shift;
   return { start, end };
-}
-
-export function shiftRange(amount: number): (range: Range) => Range {
-  return ({ start, end }: Range): Range => ({
-    start: start + amount,
-    end: end + amount,
-  });
 }
 
 export function getEstrelaMetadata(file: string): {

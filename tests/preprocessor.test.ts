@@ -1,13 +1,17 @@
 import ts from 'typescript';
-import { getElements, preprocess } from '../src/preprocessor';
+import {
+  getElements,
+  preprocessFile,
+  preprocessScript,
+} from '../src/preprocessor';
 import { createSource } from '../src/utils';
 
 describe('preprocessor', () => {
   const linesExtractor = (str: string) =>
     str
-      .trim()
       .split('\n')
-      .map(line => line.trim());
+      .map(line => line.trim())
+      .filter(line => !/^(\s+)?$/.test(line));
 
   test('getElements - no style and template tags', () => {
     const content = `
@@ -78,7 +82,53 @@ describe('preprocessor', () => {
     expect(result2.jsxElements).toHaveLength(0);
   });
 
-  test('preprocess - basic', () => {
+  test('preprocessScript - jsx', () => {
+    const script = `
+      const data = <div>Count is { count }</div>`;
+
+    const expected = `
+      import { defineElement, html } from "estrela";
+      defineElement("app-root", () => {
+        const data = html\` <div>Count is \${ count }</div>\``;
+
+    const result = preprocessScript('app-root', script);
+
+    expect(linesExtractor(result)).toEqual(linesExtractor(expected));
+  });
+
+  test('preprocessScript - prop', () => {
+    const script = `
+      import { prop } from 'estrela';
+      const count = prop<number>();`;
+
+    const expected = `
+      import { defineElement, html } from "estrela";
+      import { prop } from 'estrela';
+      defineElement("app-root", () => {
+      const count = prop<number>({ key: "count" });`;
+
+    const result = preprocessScript('app-root', script);
+
+    expect(linesExtractor(result)).toEqual(linesExtractor(expected));
+  });
+
+  test('preprocessScript - emitter', () => {
+    const script = `
+      import { emitter } from 'estrela';
+      const count = emitter<number>({ async: true });`;
+
+    const expected = `
+      import { defineElement, html } from "estrela";
+      import { emitter } from 'estrela';
+      defineElement("app-root", () => {
+      const count = emitter<number>({ key: "count", ...{ async: true } });`;
+
+    const result = preprocessScript('app-root', script);
+
+    expect(linesExtractor(result)).toEqual(linesExtractor(expected));
+  });
+
+  test('preprocessFile - script', () => {
     const file = 'app.estrela';
     const content = `
       <script tag="app-root">
@@ -86,22 +136,38 @@ describe('preprocessor', () => {
         const count = state(0);
         setInterval(() => count.update(value => ++value), 1000);
       </script>
-      <div>Count is { count }</div>
-    `;
+      <div>Count is { count() && <span>{count}</span> }</div>`;
 
-    const { code } = preprocess(content, file);
+    const { code } = preprocessFile(content, file);
 
     const expected = `
       import { defineElement, html } from "estrela";
       import { state } from 'estrela';
       defineElement("app-root", () => {
+
         const count = state(0);
         setInterval(() => count.update(value => ++value), 1000);
         return () => html\`
-          <div>Count is \${ count }</div>
+          <div>Count is \${ count() && html\` <span>\${count}</span>\` }</div>
         \`;
-      });
-    `;
+      });`;
+
+    expect(linesExtractor(code)).toEqual(linesExtractor(expected));
+  });
+
+  test('preprocessFile - no script', () => {
+    const file = 'app.estrela';
+    const content = `<h1>Hello World!</h1>`;
+
+    const { code } = preprocessFile(content, file);
+
+    const expected = `
+      import { defineElement, html } from "estrela";
+      defineElement("app", () => {
+        return () => html\`
+          <h1>Hello World!</h1>
+        \`;
+      });`;
 
     expect(linesExtractor(code)).toEqual(linesExtractor(expected));
   });

@@ -3,10 +3,10 @@ import ts from 'typescript';
 import { Range } from './interfaces';
 import {
   createSource,
+  getElementAttributes,
   getEstrelaMetadata,
   getImportMap,
   getRange,
-  shiftRange,
 } from './utils';
 
 interface ElementsResult {
@@ -51,12 +51,12 @@ export function getElements(
 
     // get JsxElements respecting "skipRootJsx" logic
     if (ts.isJsxElement(node) && (!skipRootJsx || isInJsxTree)) {
-      jsxElements.push(getRange(node, source));
+      jsxElements.push(getRange(node));
     }
 
     // get JsxExpressions
     if (ts.isJsxExpression(node)) {
-      jsxExpressions.push(getRange(node, source));
+      jsxExpressions.push(getRange(node));
     }
 
     // iterate over children
@@ -89,100 +89,76 @@ export function getVariableDeclarations(
   return declarations;
 }
 
-export function parseScript(
-  defaultTag: string | undefined,
-  script: ts.JsxElement,
-  source: ts.SourceFile,
-  ms: MagicString
-) {
-  const openRange = getRange(script.openingElement, source);
-  const closeRange = getRange(script.closingElement, source);
-  const scriptShifter = shiftRange(script.openingElement.getWidth(source) + 2);
+export function preprocessScript(tag: string, script: string) {
+  script = script.trim();
 
-  const attributes = script.openingElement.attributes.properties.reduce(
-    (acc, attr) => {
-      if (
-        ts.isJsxAttribute(attr) &&
-        attr.initializer &&
-        ts.isStringLiteral(attr.initializer)
-      ) {
-        acc[String(attr.name.text)] = attr.initializer.text;
-      }
-      return acc;
-    },
-    {} as Record<string, string>
-  );
+  const ms = new MagicString(script);
+  const source = createSource(script);
+  const importMap = getImportMap(source);
+  const firstStatementIndex = Object.keys(importMap).length;
 
-  const scriptSource = createSource(
-    script.children.map(child => child.getFullText(source)).join('')
+  ms.prependLeft(
+    getRange(source.statements[firstStatementIndex]).start(),
+    `${firstStatementIndex === 0 ? '' : '\n'}defineElement("${tag}", () => {\n`
   );
-  const importMap = getImportMap(scriptSource);
-  const importCount = Object.keys(importMap).length;
+  ms.prepend('import { defineElement, html } from "estrela";\n');
+
+  const { jsxElements, jsxExpressions } = getElements(source);
+
+  // prepend "$" on jsx expressions braces.
+  jsxExpressions.forEach(({ start }) => {
+    ms.prependLeft(start(), '$');
+  });
+
+  // add html directive for jsx elements.
+  jsxElements.forEach(({ start, end }) => {
+    ms.prependLeft(start(), ' html`');
+    ms.appendRight(end(), '`');
+  });
 
   // find prop and emitters to replace key
   if (importMap['estrela']?.imports) {
-    const declarations = getVariableDeclarations(scriptSource);
+    const declarations = getVariableDeclarations(source);
 
-    if (importMap['estrela'].imports.some(key => key === 'prop')) {
+    const parseOptionsFor = (key: 'emitter' | 'prop') => {
       declarations.forEach(node => {
         if (
           node.initializer &&
           ts.isCallExpression(node.initializer) &&
           ts.isIdentifier(node.initializer.expression) &&
-          node.initializer.expression.text === 'prop' &&
+          node.initializer.expression.text === key &&
           ts.isIdentifier(node.name)
         ) {
           const key = node.name.text;
           const callArg = node.initializer.arguments[0];
-          const optionsArg = `{ key: '${key}', ...${
-            callArg?.getText(scriptSource) ?? '{}'
-          } }`;
+          const optionsArg = callArg
+            ? `{ key: "${key}", ...${callArg.getText(source)} }`
+            : `{ key: "${key}" }`;
 
           if (callArg) {
-            const range = scriptShifter(getRange(callArg, scriptSource));
-            ms.overwrite(range.start, range.end, optionsArg);
+            const range = getRange(callArg);
+            ms.overwrite(range.start(), range.end(), optionsArg);
           } else {
-            const _range = getRange(node.initializer, scriptSource);
-            const range = scriptShifter(_range);
-            ms.prependLeft(range.end, optionsArg);
+            const range = getRange(node.initializer);
+            ms.prependLeft(range.end() - 1, optionsArg);
           }
         }
       });
-    }
+    };
 
     if (importMap['estrela'].imports.some(key => key === 'emitter')) {
+      parseOptionsFor('emitter');
+    }
+
+    if (importMap['estrela'].imports.some(key => key === 'prop')) {
+      parseOptionsFor('prop');
     }
   }
 
-  // add imports
-  ms.overwrite(
-    openRange.start,
-    openRange.end,
-    'import { defineElement, html } from "estrela";'
-  );
-
-  // add defineElement
-  const elementStatement = scriptSource.statements[importCount];
-  const elementRange = scriptShifter(getRange(elementStatement, scriptSource));
-  ms.prependLeft(
-    elementRange.start,
-    `defineElement("${attributes.tag ?? defaultTag}", () => {\n`
-  );
-
-  // replace with element return
-  ms.overwrite(closeRange.start, closeRange.end, 'return () => html`');
-
-  // close final template string
-  ms.append('`;\n});');
-
-  const elements = getElements(scriptSource);
-  const jsxElements = elements.jsxElements.map(scriptShifter);
-  const jsxExpressions = elements.jsxExpressions.map(scriptShifter);
-
-  return { jsxElements, jsxExpressions };
+  return ms.toString();
 }
 
-export function preprocess(code: string, filePath: string) {
+export function preprocessFile(code: string, filePath: string) {
   const { filename, tag } = getEstrelaMetadata(filePath);
 
   const ms = new MagicString(code);
@@ -190,26 +166,37 @@ export function preprocess(code: string, filePath: string) {
   const { script, jsxElements, jsxExpressions } = getElements(source, true);
 
   if (script) {
-    const result = parseScript(tag, script, source, ms);
-    jsxElements.push(...result.jsxElements);
-    jsxExpressions.push(...result.jsxExpressions);
+    const scriptRange = getRange(script);
+    const scriptAttributes = getElementAttributes(script);
+    const scriptContent = script.children
+      .map(node => node.getFullText(source))
+      .join('');
+    const scriptResult = preprocessScript(
+      scriptAttributes.tag || tag || '',
+      scriptContent
+    );
+    ms.overwrite(scriptRange.start(-2), scriptRange.end(-2), scriptResult);
+    ms.appendRight(scriptRange.end(-2), '\nreturn () => html`');
   } else {
     ms.prepend(
       'import { defineElement, html } from "estrela";\n' +
-        `defineElement("${tag}", () => () => html\``
+        `defineElement("${tag}", () => {\n` +
+        'return () => html`\n'
     );
-    ms.append('`);');
   }
+
+  // append element close
+  ms.append('\n`;\n});');
 
   // prepend "$" on jsx expressions braces.
   jsxExpressions.forEach(({ start }) => {
-    ms.prependLeft(start, '$');
+    ms.prependLeft(start(-2), '$');
   });
 
   // add html directive for jsx elements.
   jsxElements.forEach(({ start, end }) => {
-    ms.prependLeft(start, 'html`');
-    ms.appendRight(end, '`');
+    ms.prependLeft(start(-2), ' html`');
+    ms.appendRight(end(-2), '`');
   });
 
   return {
