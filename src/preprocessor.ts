@@ -101,7 +101,7 @@ export function preprocessScript(tag: string, script: string) {
     getRange(source.statements[firstStatementIndex]).start(),
     `${firstStatementIndex === 0 ? '' : '\n'}defineElement("${tag}", () => {\n`
   );
-  ms.prepend('import { defineElement, html } from "estrela";\n');
+  ms.prepend('import { defineElement, html, css } from "estrela";\n');
 
   const { jsxElements, jsxExpressions } = getElements(source);
 
@@ -163,7 +163,10 @@ export function preprocessFile(code: string, filePath: string) {
 
   const ms = new MagicString(code);
   const source = createSource(`<>${code}</>`);
-  const { script, jsxElements, jsxExpressions } = getElements(source, true);
+  const { script, style, jsxElements, jsxExpressions } = getElements(
+    source,
+    true
+  );
 
   if (script) {
     const scriptRange = getRange(script);
@@ -179,14 +182,28 @@ export function preprocessFile(code: string, filePath: string) {
     ms.appendRight(scriptRange.end(-2), '\nreturn () => html`');
   } else {
     ms.prepend(
-      'import { defineElement, html } from "estrela";\n' +
+      'import { defineElement, html, css } from "estrela";\n' +
         `defineElement("${tag}", () => {\n` +
         'return () => html`\n'
     );
   }
 
-  // append element close
-  ms.append('\n`;\n});');
+  // append render close
+  ms.append('\n`;\n}');
+
+  if (style) {
+    const styleRange = getRange(style);
+    const styleContent = style.children
+      .map(node => node.getFullText(source))
+      .join('');
+    ms.remove(styleRange.start(-2), styleRange.end(-2));
+    ms.append(', css`\n' + styleContent + '`');
+
+    // TODO: keep style in html when it has jsx expressions
+  }
+
+  // append defineElement close
+  ms.append(');');
 
   // prepend "$" on jsx expressions braces.
   jsxExpressions.forEach(({ start }) => {

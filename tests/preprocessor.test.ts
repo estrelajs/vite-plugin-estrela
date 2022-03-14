@@ -87,7 +87,7 @@ describe('preprocessor', () => {
       const data = <div>Count is { count }</div>`;
 
     const expected = `
-      import { defineElement, html } from "estrela";
+      import { defineElement, html, css } from "estrela";
       defineElement("app-root", () => {
         const data = html\` <div>Count is \${ count }</div>\``;
 
@@ -102,7 +102,7 @@ describe('preprocessor', () => {
       const count = prop<number>();`;
 
     const expected = `
-      import { defineElement, html } from "estrela";
+      import { defineElement, html, css } from "estrela";
       import { prop } from 'estrela';
       defineElement("app-root", () => {
       const count = prop<number>({ key: "count" });`;
@@ -118,7 +118,7 @@ describe('preprocessor', () => {
       const count = emitter<number>({ async: true });`;
 
     const expected = `
-      import { defineElement, html } from "estrela";
+      import { defineElement, html, css } from "estrela";
       import { emitter } from 'estrela';
       defineElement("app-root", () => {
       const count = emitter<number>({ key: "count", ...{ async: true } });`;
@@ -141,10 +141,9 @@ describe('preprocessor', () => {
     const { code } = preprocessFile(content, file);
 
     const expected = `
-      import { defineElement, html } from "estrela";
+      import { defineElement, html, css } from "estrela";
       import { state } from 'estrela';
       defineElement("app-root", () => {
-
         const count = state(0);
         setInterval(() => count.update(value => ++value), 1000);
         return () => html\`
@@ -162,12 +161,45 @@ describe('preprocessor', () => {
     const { code } = preprocessFile(content, file);
 
     const expected = `
-      import { defineElement, html } from "estrela";
+      import { defineElement, html, css } from "estrela";
       defineElement("app", () => {
         return () => html\`
           <h1>Hello World!</h1>
         \`;
       });`;
+
+    expect(linesExtractor(code)).toEqual(linesExtractor(expected));
+  });
+
+  test('preprocessFile - script and style', () => {
+    const file = 'app.estrela';
+    const content = `
+      <script tag="app-root">
+        import { state } from 'estrela';
+        const name = state('World');
+      </script>
+      <h1>Hello {name}!</h1>
+      <style>
+        h1 {
+          color: #555;
+        }
+      </style>`;
+
+    const { code } = preprocessFile(content, file);
+
+    const expected = `
+      import { defineElement, html, css } from "estrela";
+      import { state } from 'estrela';
+      defineElement("app-root", () => {
+        const name = state('World');
+        return () => html\`
+          <h1>Hello \${name}!</h1>
+        \`;
+      }, css\`
+        h1 {
+          color: #555;
+        }
+      \`);`;
 
     expect(linesExtractor(code)).toEqual(linesExtractor(expected));
   });
