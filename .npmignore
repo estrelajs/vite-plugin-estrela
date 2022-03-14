@@ -1,2 +1,11 @@
 node_modules
 src
+tests
+
+# files
+.editorconfig
+.gitignore
+.prettierrc.yaml
+jest.config.ts
+tsconfig.json
+yarn.lock
