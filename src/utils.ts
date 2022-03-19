@@ -44,7 +44,7 @@ export function findTag(tag: string, code: string): TagMetadata | undefined {
   return undefined;
 }
 
-export function getElements(
+export function getJsxElements(
   source: ts.SourceFile,
   skipRoot?: boolean
 ): { jsxElements: Range[]; jsxExpressions: Range[] } {
@@ -67,6 +67,7 @@ export function getElements(
     // iterate over children
     node.forEachChild(child => visitElements(child, isInClosure));
   };
+
   visitElements(source, !skipRoot);
 
   return {

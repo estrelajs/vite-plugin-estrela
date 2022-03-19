@@ -5,7 +5,7 @@ import { Range } from './Range';
 import {
   createSource,
   findTag,
-  getElements,
+  getJsxElements,
   getEstrelaFilename,
   getImportMap,
   getVariableDeclarations,
@@ -16,11 +16,11 @@ export function preprocessScript(tag: string, script: string): CodeReplace[] {
   const source = createSource(script);
   const importMap = getImportMap(source);
   const firstStatement = source.statements[Object.keys(importMap).length];
-  const { jsxElements, jsxExpressions } = getElements(source);
+  const { jsxElements, jsxExpressions } = getJsxElements(source);
 
   codeReplaces.push({
     start: firstStatement ? firstStatement.getStart(source) : 0,
-    content: `\ndefineElement("${tag}", () => {\n`,
+    content: `\ndefineElement("${tag}", host => {\n`,
   });
 
   // find prop and emitters to replace key
@@ -88,8 +88,8 @@ export function preprocessFile(code: string, filePath: string) {
   const ms = new MagicString(code);
 
   const script = findTag('script', code);
-  const style = findTag('style', code);
   const template = findTag('template', code);
+  const style = findTag('style', code);
 
   if (script) {
     const openingIndex = code.indexOf(script.opening);
@@ -140,7 +140,7 @@ export function preprocessFile(code: string, filePath: string) {
     const scopedTemplate = code.slice(start, end);
     const shift = code.indexOf(scopedTemplate) - 2;
     const source = createSource(`<>${scopedTemplate}</>`);
-    const { jsxElements, jsxExpressions } = getElements(source, true);
+    const { jsxElements, jsxExpressions } = getJsxElements(source, true);
 
     // prepend "$" on jsx expressions braces.
     jsxExpressions.forEach(range => {

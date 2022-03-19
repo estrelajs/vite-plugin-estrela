@@ -1,13 +1,13 @@
 import ts from 'typescript';
-import { createSource, getElements, getEstrelaFilename } from '../src/utils';
+import { createSource, getJsxElements, getEstrelaFilename } from '../src/utils';
 
-describe('getElements', () => {
+describe('getJsxElements', () => {
   it('should get jsx elements in template', () => {
     const content = `<div>Count is { count }</div>`;
 
     const source = createSource(content);
-    const result1 = getElements(source, false);
-    const result2 = getElements(source, true);
+    const result1 = getJsxElements(source, false);
+    const result2 = getJsxElements(source, true);
 
     // check JsxElements
     expect(result1.jsxElements).toHaveLength(1);
