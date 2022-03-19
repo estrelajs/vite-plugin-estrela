@@ -12,7 +12,7 @@ const linesExtractor = (str: string) =>
 //       const data = <div>Count is { count }</div>`;
 
 //     const expected = `
-//       import { defineElement, html, css } from "estrela";
+//       import { defineElement, html } from "estrela";
 //       defineElement("app-root", () => {
 //         const data = html\` <div>Count is \${ count }</div>\``;
 
@@ -27,7 +27,7 @@ const linesExtractor = (str: string) =>
 //       const count = prop<number>();`;
 
 //     const expected = `
-//       import { defineElement, html, css } from "estrela";
+//       import { defineElement, html } from "estrela";
 //       import { prop } from 'estrela';
 //       defineElement("app-root", () => {
 //       const count = prop<number>({ key: "count" });`;
@@ -43,7 +43,7 @@ const linesExtractor = (str: string) =>
 //       const count = emitter<number>({ async: true });`;
 
 //     const expected = `
-//       import { defineElement, html, css } from "estrela";
+//       import { defineElement, html } from "estrela";
 //       import { emitter } from 'estrela';
 //       defineElement("app-root", () => {
 //       const count = emitter<number>({ key: "count", ...{ async: true } });`;
@@ -68,7 +68,7 @@ describe('preprocessFile', () => {
     const { code } = preprocessFile(content, file);
 
     const expected = `
-      import { defineElement, html, css } from "estrela";
+      import { defineElement, html } from "estrela";
       import { state } from 'estrela';
       defineElement("app-root", () => {
         const count = state(0);
@@ -91,7 +91,7 @@ describe('preprocessFile', () => {
     const { code } = preprocessFile(content, file);
 
     const expected = `
-      import { defineElement, html, css } from "estrela";
+      import { defineElement, html } from "estrela";
       defineElement("app-root", () => {
         return () => html\`
           <h1>Hello World!</h1>
@@ -108,7 +108,7 @@ describe('preprocessFile', () => {
     const { code } = preprocessFile(content, file);
 
     const expected = `
-      import { defineElement, html, css } from "estrela";
+      import { defineElement, html } from "estrela";
       defineElement("app", () => {
         return () => html\`
           <h1>Hello World!</h1>
@@ -135,14 +135,14 @@ describe('preprocessFile', () => {
     const { code } = preprocessFile(content, file);
 
     const expected = `
-      import { defineElement, html, css } from "estrela";
+      import { defineElement, html } from "estrela";
       import { state } from 'estrela';
       defineElement("app-root", () => {
         const name = state('World');
         return () => html\`
           <h1>Hello \${name}!</h1>
         \`;
-      }, css\`
+      }, \`
         h1 {
           color: #555;
         }
@@ -163,7 +163,7 @@ describe('preprocessFile', () => {
     const { code } = preprocessFile(content, file);
 
     const expected = `
-    import { defineElement, html, css } from "estrela";
+    import { defineElement, html } from "estrela";
     import { state } from 'estrela';
     defineElement("app-root", () => {
       const name = state('Stranger');
@@ -171,6 +171,32 @@ describe('preprocessFile', () => {
         <p>Visit <a href="https://www.link.com">\${ name }</a>.</p>
       \`;
     });`;
+
+    expect(linesExtractor(code)).toEqual(linesExtractor(expected));
+  });
+
+  test('with declared promise', () => {
+    const file = 'app.estrela';
+    const content = `<script tag="app-greeter">
+    import { prop } from "estrela";
+    import { async, when } from "estrela/directives";
+
+    const name = prop<string>();
+
+    const greet = new Promise<string>(r => {
+      setTimeout(() => r('Welcome'), 5000);
+    });
+  </script>
+
+  <h1>
+    { async(greet) ?? 'Hello' }
+    { when(name() === 'Eduardo', 'o cara', name()) }!
+  </h1>
+  `;
+
+    const { code } = preprocessFile(content, file);
+
+    const expected = ``;
 
     expect(linesExtractor(code)).toEqual(linesExtractor(expected));
   });

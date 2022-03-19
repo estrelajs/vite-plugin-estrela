@@ -109,7 +109,7 @@ export function preprocessFile(code: string, filePath: string) {
     ms.overwrite(
       startRange.shift(-2).start,
       startRange.shift(-2).end,
-      'import { defineElement, html, css } from "estrela";'
+      'import { defineElement, html } from "estrela";'
     );
 
     scriptReplaces.forEach(range => {
@@ -127,7 +127,7 @@ export function preprocessFile(code: string, filePath: string) {
     );
   } else {
     ms.prepend(
-      'import { defineElement, html, css } from "estrela";\n' +
+      'import { defineElement, html } from "estrela";\n' +
         `defineElement("${tag}", () => {\n` +
         'return () => html`\n'
     );
@@ -142,7 +142,7 @@ export function preprocessFile(code: string, filePath: string) {
       .map(node => node.getFullText(source))
       .join('');
     ms.remove(styleRange.shift(-2).start, styleRange.shift(-2).end);
-    ms.append(', css`\n' + styleContent + '`');
+    ms.append(', `\n' + styleContent + '`');
 
     // TODO: keep style in html when it has jsx expressions
   }
