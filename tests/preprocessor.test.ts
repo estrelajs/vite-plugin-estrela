@@ -1,10 +1,4 @@
-import ts from 'typescript';
-import {
-  getElements,
-  preprocessFile,
-  preprocessScript,
-} from '../src/preprocessor';
-import { createSource } from '../src/utils';
+import { preprocessFile } from '../src/preprocessor';
 
 const linesExtractor = (str: string) =>
   str
@@ -12,124 +6,53 @@ const linesExtractor = (str: string) =>
     .map(line => line.trim())
     .filter(line => !/^(\s+)?$/.test(line));
 
-describe('getElements', () => {
-  test('no style and template tags', () => {
-    const content = `
-      <script tag="app-root">
-        import { state } from 'estrela';
-        const count = state(0);
-        setInterval(() => count.update(value => ++value), 1000);
-      </script>
-      <div>Count is { count }</div>
-    `;
+// describe('processScript', () => {
+//   test('jsx', () => {
+//     const script = `
+//       const data = <div>Count is { count }</div>`;
 
-    const source = createSource(content);
-    const result1 = getElements(source, false);
-    const result2 = getElements(source, true);
+//     const expected = `
+//       import { defineElement, html, css } from "estrela";
+//       defineElement("app-root", () => {
+//         const data = html\` <div>Count is \${ count }</div>\``;
 
-    // check script
-    expect(ts.isJsxElement(result1.script!)).toBe(true);
-    expect(ts.isJsxElement(result2.script!)).toBe(true);
+//     const result = preprocessScript('app-root', script);
 
-    // check style
-    expect(result1.style).toBe(undefined);
-    expect(result2.style).toBe(undefined);
+//     expect(linesExtractor(result)).toEqual(linesExtractor(expected));
+//   });
 
-    // check template
-    expect(result1.template).toBe(undefined);
-    expect(result2.template).toBe(undefined);
+//   test('prop', () => {
+//     const script = `
+//       import { prop } from 'estrela';
+//       const count = prop<number>();`;
 
-    // check JsxElements
-    expect(result1.jsxElements).toHaveLength(1);
-    expect(result2.jsxElements).toHaveLength(0);
-  });
+//     const expected = `
+//       import { defineElement, html, css } from "estrela";
+//       import { prop } from 'estrela';
+//       defineElement("app-root", () => {
+//       const count = prop<number>({ key: "count" });`;
 
-  test('complete', () => {
-    const content = `
-      <script tag="app-root">
-        import { state } from 'estrela';
-        const count = state(0);
-        setInterval(() => count.update(value => ++value), 1000);
-      </script>
-      <template>
-        <div>Count is { count }</div>
-      </template>
-      <style>
-        div {
-          background: black;
-        }
-      </style>
-    `;
+//     const result = preprocessScript('app-root', script);
 
-    const source = createSource(content);
-    const result1 = getElements(source, false);
-    const result2 = getElements(source, true);
+//     expect(linesExtractor(result)).toEqual(linesExtractor(expected));
+//   });
 
-    // check script
-    expect(ts.isJsxElement(result1.script!)).toBe(true);
-    expect(ts.isJsxElement(result2.script!)).toBe(true);
+//   test('emitter', () => {
+//     const script = `
+//       import { emitter } from 'estrela';
+//       const count = emitter<number>({ async: true });`;
 
-    // check style
-    expect(ts.isJsxElement(result1.style!)).toBe(true);
-    expect(ts.isJsxElement(result2.style!)).toBe(true);
+//     const expected = `
+//       import { defineElement, html, css } from "estrela";
+//       import { emitter } from 'estrela';
+//       defineElement("app-root", () => {
+//       const count = emitter<number>({ key: "count", ...{ async: true } });`;
 
-    // check template
-    expect(ts.isJsxElement(result1.template!)).toBe(true);
-    expect(ts.isJsxElement(result2.template!)).toBe(true);
+//     const result = preprocessScript('app-root', script);
 
-    // check JsxElements
-    expect(result1.jsxElements).toHaveLength(1);
-    expect(result2.jsxElements).toHaveLength(0);
-  });
-});
-
-describe('eprocessScript', () => {
-  test('jsx', () => {
-    const script = `
-      const data = <div>Count is { count }</div>`;
-
-    const expected = `
-      import { defineElement, html, css } from "estrela";
-      defineElement("app-root", () => {
-        const data = html\` <div>Count is \${ count }</div>\``;
-
-    const result = preprocessScript('app-root', script);
-
-    expect(linesExtractor(result)).toEqual(linesExtractor(expected));
-  });
-
-  test('prop', () => {
-    const script = `
-      import { prop } from 'estrela';
-      const count = prop<number>();`;
-
-    const expected = `
-      import { defineElement, html, css } from "estrela";
-      import { prop } from 'estrela';
-      defineElement("app-root", () => {
-      const count = prop<number>({ key: "count" });`;
-
-    const result = preprocessScript('app-root', script);
-
-    expect(linesExtractor(result)).toEqual(linesExtractor(expected));
-  });
-
-  test('emitter', () => {
-    const script = `
-      import { emitter } from 'estrela';
-      const count = emitter<number>({ async: true });`;
-
-    const expected = `
-      import { defineElement, html, css } from "estrela";
-      import { emitter } from 'estrela';
-      defineElement("app-root", () => {
-      const count = emitter<number>({ key: "count", ...{ async: true } });`;
-
-    const result = preprocessScript('app-root', script);
-
-    expect(linesExtractor(result)).toEqual(linesExtractor(expected));
-  });
-});
+//     expect(linesExtractor(result)).toEqual(linesExtractor(expected));
+//   });
+// });
 
 describe('preprocessFile', () => {
   test('script', () => {

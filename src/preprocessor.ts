@@ -1,125 +1,26 @@
 import MagicString from 'magic-string';
 import ts from 'typescript';
-import { Range } from './interfaces';
+import { CodeReplace } from './interfaces';
+import { Range } from './Range';
 import {
   createSource,
   getElementAttributes,
+  getElements,
   getEstrelaMetadata,
   getImportMap,
-  getRange,
+  getVariableDeclarations,
 } from './utils';
 
-interface ElementsResult {
-  script: ts.JsxElement | undefined;
-  style: ts.JsxElement | undefined;
-  template: ts.JsxElement | undefined;
-  jsxElements: Range[];
-  jsxExpressions: Range[];
-}
-
-export function getElements(
-  source: ts.SourceFile,
-  skipRoot?: boolean
-): ElementsResult {
-  let script: ts.JsxElement | undefined = undefined;
-  let style: ts.JsxElement | undefined = undefined;
-  let template: ts.JsxElement | undefined = undefined;
-  const jsxElements: Range[] = [];
-  const jsxExpressions: Range[] = [];
-
-  const visitElements = (node: ts.Node, isInClosure: boolean) => {
-    // check for <script>, <style> and <template>
-    if (ts.isJsxElement(node)) {
-      const isTagName = (tag: string) =>
-        ts.isIdentifier(node.openingElement.tagName) &&
-        node.openingElement.tagName.text === tag;
-
-      if (isTagName('script')) {
-        script = node;
-        return;
-      }
-      if (isTagName('style')) {
-        style = node;
-        return;
-      }
-      if (isTagName('template')) {
-        template = node;
-        node.forEachChild(node => visitElements(node, isInClosure));
-        return;
-      }
-    }
-
-    // get JsxElements respecting "skipRootJsx" logic
-    if (ts.isJsxElement(node) && isInClosure) {
-      jsxElements.push(getRange(node));
-      isInClosure = false;
-    }
-
-    // get JsxExpressions
-    if (ts.isJsxExpression(node)) {
-      jsxExpressions.push(getRange(node));
-      isInClosure = true;
-    }
-
-    // iterate over children
-    node.forEachChild(child => visitElements(child, isInClosure));
-  };
-  visitElements(source, !skipRoot);
-
-  return {
-    script,
-    style,
-    template,
-    jsxElements,
-    jsxExpressions,
-  };
-}
-
-export function getVariableDeclarations(
-  source: ts.SourceFile
-): ts.VariableDeclaration[] {
-  const declarations: ts.VariableDeclaration[] = [];
-  const visitElements = (node: ts.Node) => {
-    node.forEachChild(visitElements);
-    if (ts.isVariableDeclaration(node)) {
-      declarations.push(node);
-    }
-  };
-  visitElements(source);
-  return declarations;
-}
-
-export function preprocessScript(tag: string, script: string) {
-  script = script.trim();
-
-  const ms = new MagicString(script);
+export function preprocessScript(tag: string, script: string): CodeReplace[] {
+  const codeReplaces: CodeReplace[] = [];
   const source = createSource(script);
   const importMap = getImportMap(source);
-  const firstStatementIndex = Object.keys(importMap).length;
-
-  if (source.statements[firstStatementIndex]) {
-    ms.prependLeft(
-      getRange(source.statements[firstStatementIndex]).start(),
-      `${
-        firstStatementIndex === 0 ? '' : '\n'
-      }defineElement("${tag}", () => {\n`
-    );
-  } else {
-    ms.prepend(`defineElement("${tag}", () => {\n`);
-  }
-  ms.prepend('import { defineElement, html, css } from "estrela";\n');
-
+  const firstStatement = source.statements[Object.keys(importMap).length];
   const { jsxElements, jsxExpressions } = getElements(source);
 
-  // prepend "$" on jsx expressions braces.
-  jsxExpressions.forEach(({ start }) => {
-    ms.prependLeft(start(), '$');
-  });
-
-  // add html directive for jsx elements.
-  jsxElements.forEach(({ start, end }) => {
-    ms.prependLeft(start(), ' html`');
-    ms.appendRight(end(), '`');
+  codeReplaces.push({
+    start: firstStatement ? firstStatement.getFullStart() : 0,
+    content: `defineElement("${tag}", () => {\n`,
   });
 
   // find prop and emitters to replace key
@@ -142,11 +43,18 @@ export function preprocessScript(tag: string, script: string) {
             : `{ key: "${key}" }`;
 
           if (callArg) {
-            const range = getRange(callArg);
-            ms.overwrite(range.start(), range.end(), optionsArg);
+            const range = Range.fromNode(callArg, source);
+            codeReplaces.push({
+              start: range.start,
+              end: range.end,
+              content: optionsArg,
+            });
           } else {
-            const range = getRange(node.initializer);
-            ms.prependLeft(range.end() - 1, optionsArg);
+            const range = Range.fromNode(node.initializer, source);
+            codeReplaces.push({
+              start: range.shift(-1).end,
+              content: optionsArg,
+            });
           }
         }
       });
@@ -161,7 +69,18 @@ export function preprocessScript(tag: string, script: string) {
     }
   }
 
-  return ms.toString();
+  // prepend "$" on jsx expressions braces.
+  jsxExpressions.forEach(({ start }) => {
+    codeReplaces.push({ start, content: '$' });
+  });
+
+  // add html directive for jsx elements.
+  jsxElements.forEach(({ start, end }) => {
+    codeReplaces.push({ start, content: ' html`' });
+    codeReplaces.push({ start: end, content: '`' });
+  });
+
+  return codeReplaces;
 }
 
 export function preprocessFile(code: string, filePath: string) {
@@ -175,17 +94,37 @@ export function preprocessFile(code: string, filePath: string) {
   );
 
   if (script) {
-    const scriptRange = getRange(script);
+    const startRange = Range.fromNode(script.openingElement, source);
+    const endRange = Range.fromNode(script.closingElement, source);
     const scriptAttributes = getElementAttributes(script);
+    const shift = script.openingElement.getEnd() + 2;
     const scriptContent = script.children
       .map(node => node.getFullText(source))
       .join('');
-    const scriptResult = preprocessScript(
+    const scriptReplaces = preprocessScript(
       scriptAttributes.tag || tag || '',
       scriptContent
     );
-    ms.overwrite(scriptRange.start(-2), scriptRange.end(-2), scriptResult);
-    ms.appendRight(scriptRange.end(-2), '\nreturn () => html`');
+
+    ms.overwrite(
+      startRange.shift(-2).start,
+      startRange.shift(-2).end,
+      'import { defineElement, html, css } from "estrela";'
+    );
+
+    scriptReplaces.forEach(range => {
+      if (range.end === undefined) {
+        ms.appendLeft(range.start + shift, range.content);
+      } else {
+        ms.overwrite(range.start + shift, range.end + shift, range.content);
+      }
+    });
+
+    ms.overwrite(
+      endRange.shift(-2).start,
+      endRange.shift(-2).end,
+      'return () => html`'
+    );
   } else {
     ms.prepend(
       'import { defineElement, html, css } from "estrela";\n' +
@@ -198,11 +137,11 @@ export function preprocessFile(code: string, filePath: string) {
   ms.append('\n`;\n}');
 
   if (style) {
-    const styleRange = getRange(style);
+    const styleRange = Range.fromNode(style, source);
     const styleContent = style.children
       .map(node => node.getFullText(source))
       .join('');
-    ms.remove(styleRange.start(-2), styleRange.end(-2));
+    ms.remove(styleRange.shift(-2).start, styleRange.shift(-2).end);
     ms.append(', css`\n' + styleContent + '`');
 
     // TODO: keep style in html when it has jsx expressions
@@ -212,15 +151,28 @@ export function preprocessFile(code: string, filePath: string) {
   ms.append(');');
 
   // prepend "$" on jsx expressions braces.
-  jsxExpressions.forEach(({ start }) => {
-    ms.prependLeft(start(-2), '$');
+  jsxExpressions.forEach(range => {
+    ms.prependLeft(range.shift(-2).start, '$');
   });
 
   // add html directive for jsx elements.
-  jsxElements.forEach(({ start, end }) => {
-    ms.prependLeft(start(-2), ' html`');
-    ms.appendRight(end(-2), '`');
+  jsxElements.forEach(range => {
+    ms.prependLeft(range.shift(-2).start, ' html`');
+    ms.appendRight(range.shift(-2).end, '`');
   });
+
+  // tried to trim lines
+  // ms.toString()
+  //   .split('\n')
+  //   .reduce((index, line) => {
+  //     const trimedLine = line.trimStart();
+  //     const charCount = line.length - trimedLine.length;
+  //     if (charCount > 0) {
+  //       ms.remove(index, index + charCount);
+  //       return index + line.length;
+  //     }
+  //     return index + 1;
+  //   }, 0);
 
   return {
     code: ms.toString(),

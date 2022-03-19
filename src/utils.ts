@@ -1,5 +1,6 @@
 import ts from 'typescript';
-import { ImportMap, Range } from './interfaces';
+import { ElementsResult, ImportMap } from './interfaces';
+import { Range } from './Range';
 
 const ESTRELA_FILE_REGEX = /([\w-]+)\.estrela$/;
 
@@ -11,6 +12,64 @@ export function createSource(content: string): ts.SourceFile {
     false,
     ts.ScriptKind.TSX
   );
+}
+
+export function getElements(
+  source: ts.SourceFile,
+  skipRoot?: boolean
+): ElementsResult {
+  let script: ts.JsxElement | undefined = undefined;
+  let style: ts.JsxElement | undefined = undefined;
+  let template: ts.JsxElement | undefined = undefined;
+  const jsxElements: Range[] = [];
+  const jsxExpressions: Range[] = [];
+
+  const visitElements = (node: ts.Node, isInClosure: boolean) => {
+    // check for <script>, <style> and <template>
+    if (ts.isJsxElement(node)) {
+      const isTagName = (tag: string) =>
+        ts.isIdentifier(node.openingElement.tagName) &&
+        node.openingElement.tagName.text === tag;
+
+      if (isTagName('script')) {
+        script = node;
+        return;
+      }
+      if (isTagName('style')) {
+        style = node;
+        return;
+      }
+      if (isTagName('template')) {
+        template = node;
+        node.forEachChild(node => visitElements(node, isInClosure));
+        return;
+      }
+    }
+
+    // get JsxElements respecting "skipRootJsx" logic
+    if (ts.isJsxElement(node) && isInClosure) {
+      jsxElements.push(Range.fromNode(node));
+      isInClosure = false;
+    }
+
+    // get JsxExpressions
+    if (ts.isJsxExpression(node)) {
+      jsxExpressions.push(Range.fromNode(node));
+      isInClosure = true;
+    }
+
+    // iterate over children
+    node.forEachChild(child => visitElements(child, isInClosure));
+  };
+  visitElements(source, !skipRoot);
+
+  return {
+    script,
+    style,
+    template,
+    jsxElements,
+    jsxExpressions,
+  };
 }
 
 export function getElementAttributes(
@@ -26,6 +85,14 @@ export function getElementAttributes(
     }
     return acc;
   }, {} as Record<string, string>);
+}
+
+export function getEstrelaMetadata(file: string): {
+  filename?: string;
+  tag?: string;
+} {
+  const [filename, tag] = ESTRELA_FILE_REGEX.exec(file) ?? [];
+  return { filename, tag };
 }
 
 export function getImportMap(
@@ -63,18 +130,18 @@ export function getImportMap(
   }, {} as Record<string, ImportMap>);
 }
 
-export function getRange(node: ts.Node): Range {
-  const start = (shift = 0) => node.getFullStart() + shift;
-  const end = (shift = 0) => node.getEnd() + shift;
-  return { start, end };
-}
-
-export function getEstrelaMetadata(file: string): {
-  filename?: string;
-  tag?: string;
-} {
-  const [filename, tag] = ESTRELA_FILE_REGEX.exec(file) ?? [];
-  return { filename, tag };
+export function getVariableDeclarations(
+  source: ts.SourceFile
+): ts.VariableDeclaration[] {
+  const declarations: ts.VariableDeclaration[] = [];
+  const visitElements = (node: ts.Node) => {
+    node.forEachChild(visitElements);
+    if (ts.isVariableDeclaration(node)) {
+      declarations.push(node);
+    }
+  };
+  visitElements(source);
+  return declarations;
 }
 
 export function isEstrelaFile(file: string): boolean {

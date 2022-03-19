@@ -1,11 +1,81 @@
 import ts from 'typescript';
-import { Range } from '../src/interfaces';
 import {
   createSource,
+  getElements,
   getEstrelaMetadata,
-  getRange,
   isEstrelaFile,
 } from '../src/utils';
+
+describe('getElements', () => {
+  test('no style and template tags', () => {
+    const content = `
+      <script tag="app-root">
+        import { state } from 'estrela';
+        const count = state(0);
+        setInterval(() => count.update(value => ++value), 1000);
+      </script>
+      <div>Count is { count }</div>
+    `;
+
+    const source = createSource(content);
+    const result1 = getElements(source, false);
+    const result2 = getElements(source, true);
+
+    // check script
+    expect(ts.isJsxElement(result1.script!)).toBe(true);
+    expect(ts.isJsxElement(result2.script!)).toBe(true);
+
+    // check style
+    expect(result1.style).toBe(undefined);
+    expect(result2.style).toBe(undefined);
+
+    // check template
+    expect(result1.template).toBe(undefined);
+    expect(result2.template).toBe(undefined);
+
+    // check JsxElements
+    expect(result1.jsxElements).toHaveLength(1);
+    expect(result2.jsxElements).toHaveLength(0);
+  });
+
+  test('complete', () => {
+    const content = `
+      <script tag="app-root">
+        import { state } from 'estrela';
+        const count = state(0);
+        setInterval(() => count.update(value => ++value), 1000);
+      </script>
+      <template>
+        <div>Count is { count }</div>
+      </template>
+      <style>
+        div {
+          background: black;
+        }
+      </style>
+    `;
+
+    const source = createSource(content);
+    const result1 = getElements(source, false);
+    const result2 = getElements(source, true);
+
+    // check script
+    expect(ts.isJsxElement(result1.script!)).toBe(true);
+    expect(ts.isJsxElement(result2.script!)).toBe(true);
+
+    // check style
+    expect(ts.isJsxElement(result1.style!)).toBe(true);
+    expect(ts.isJsxElement(result2.style!)).toBe(true);
+
+    // check template
+    expect(ts.isJsxElement(result1.template!)).toBe(true);
+    expect(ts.isJsxElement(result2.template!)).toBe(true);
+
+    // check JsxElements
+    expect(result1.jsxElements).toHaveLength(1);
+    expect(result2.jsxElements).toHaveLength(0);
+  });
+});
 
 describe('utils', () => {
   it('should create ts source', () => {
@@ -15,21 +85,6 @@ describe('utils', () => {
     expect(isSouce).toBe(true);
     expect(source.getFullText()).toBe(content);
   });
-
-  // it('should get range for node', () => {
-  //   const content = `
-  //     const arr: string = [ 'test' ];
-  //     const test: string = arr[0];
-  //     arr.push('ok');
-  //   `;
-
-  //   const source = createSource(content);
-  //   const testNode = source.statements[1];
-  //   const range = getRange(testNode, source);
-
-  //   expect(testNode.getText(source)).toBe('const test: string = arr[0];');
-  //   expect(range).toEqual({ start: 43, end: 71 });
-  // });
 
   it('should get Estrela metadata from file path', () => {
     const file1 = 'src/app-root.estrela';
