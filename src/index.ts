@@ -1,6 +1,6 @@
 import { Plugin } from 'vite';
 import { preprocessFile } from './preprocessor';
-import { isEstrelaFile } from './utils';
+import { getEstrelaFilename } from './utils';
 
 export default function (): Plugin {
   return {
@@ -17,7 +17,7 @@ export default function (): Plugin {
       };
     },
     transform(code, id) {
-      return isEstrelaFile(id) ? preprocessFile(code, id) : code;
+      return !!getEstrelaFilename(id) ? preprocessFile(code, id) : code;
     },
   };
 }

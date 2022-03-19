@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import { ElementsResult, ImportMap } from './interfaces';
+import { ImportMap, TagMetadata } from './interfaces';
 import { Range } from './Range';
 
 const ESTRELA_FILE_REGEX = /([\w-]+)\.estrela$/;
@@ -14,38 +14,44 @@ export function createSource(content: string): ts.SourceFile {
   );
 }
 
+export function findTag(tag: string, code: string): TagMetadata | undefined {
+  const pattern = `(<${tag}(.*?)>)(.*?)(<\/${tag}>)`;
+  const regex = new RegExp(pattern, 's');
+
+  const [fullContent, opening, attrs, content, closing] =
+    regex.exec(code) ?? [];
+
+  let match: RegExpExecArray | null;
+  const tagRegex = /([\w-]+)=["']?([\w-]+)["']?/g;
+  const attributes: Record<string, string> = {};
+
+  while ((match = tagRegex.exec(attrs))) {
+    const [, attr, value] = match;
+    attributes[attr] = value;
+  }
+
+  if (fullContent) {
+    return {
+      tag,
+      content,
+      fullContent,
+      attributes,
+      opening,
+      closing,
+    };
+  }
+
+  return undefined;
+}
+
 export function getElements(
   source: ts.SourceFile,
   skipRoot?: boolean
-): ElementsResult {
-  let script: ts.JsxElement | undefined = undefined;
-  let style: ts.JsxElement | undefined = undefined;
-  let template: ts.JsxElement | undefined = undefined;
+): { jsxElements: Range[]; jsxExpressions: Range[] } {
   const jsxElements: Range[] = [];
   const jsxExpressions: Range[] = [];
 
   const visitElements = (node: ts.Node, isInClosure: boolean) => {
-    // check for <script>, <style> and <template>
-    if (ts.isJsxElement(node)) {
-      const isTagName = (tag: string) =>
-        ts.isIdentifier(node.openingElement.tagName) &&
-        node.openingElement.tagName.text === tag;
-
-      if (isTagName('script')) {
-        script = node;
-        return;
-      }
-      if (isTagName('style')) {
-        style = node;
-        return;
-      }
-      if (isTagName('template')) {
-        template = node;
-        node.forEachChild(node => visitElements(node, isInClosure));
-        return;
-      }
-    }
-
     // get JsxElements respecting "skipRootJsx" logic
     if (ts.isJsxElement(node) && isInClosure) {
       jsxElements.push(Range.fromNode(node));
@@ -64,35 +70,9 @@ export function getElements(
   visitElements(source, !skipRoot);
 
   return {
-    script,
-    style,
-    template,
     jsxElements,
     jsxExpressions,
   };
-}
-
-export function getElementAttributes(
-  element: ts.JsxElement
-): Record<string, string> {
-  return element.openingElement.attributes.properties.reduce((acc, attr) => {
-    if (
-      ts.isJsxAttribute(attr) &&
-      attr.initializer &&
-      ts.isStringLiteral(attr.initializer)
-    ) {
-      acc[String(attr.name.text)] = attr.initializer.text;
-    }
-    return acc;
-  }, {} as Record<string, string>);
-}
-
-export function getEstrelaMetadata(file: string): {
-  filename?: string;
-  tag?: string;
-} {
-  const [filename, tag] = ESTRELA_FILE_REGEX.exec(file) ?? [];
-  return { filename, tag };
 }
 
 export function getImportMap(
@@ -144,6 +124,7 @@ export function getVariableDeclarations(
   return declarations;
 }
 
-export function isEstrelaFile(file: string): boolean {
-  return ESTRELA_FILE_REGEX.test(file);
+export function getEstrelaFilename(file: string): string | undefined {
+  const [, filename] = ESTRELA_FILE_REGEX.exec(file) ?? [];
+  return filename;
 }

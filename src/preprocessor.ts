@@ -4,9 +4,9 @@ import { CodeReplace } from './interfaces';
 import { Range } from './Range';
 import {
   createSource,
-  getElementAttributes,
+  findTag,
   getElements,
-  getEstrelaMetadata,
+  getEstrelaFilename,
   getImportMap,
   getVariableDeclarations,
 } from './utils';
@@ -19,8 +19,8 @@ export function preprocessScript(tag: string, script: string): CodeReplace[] {
   const { jsxElements, jsxExpressions } = getElements(source);
 
   codeReplaces.push({
-    start: firstStatement ? firstStatement.getFullStart() : 0,
-    content: `defineElement("${tag}", () => {\n`,
+    start: firstStatement ? firstStatement.getStart(source) : 0,
+    content: `\ndefineElement("${tag}", () => {\n`,
   });
 
   // find prop and emitters to replace key
@@ -84,95 +84,91 @@ export function preprocessScript(tag: string, script: string): CodeReplace[] {
 }
 
 export function preprocessFile(code: string, filePath: string) {
-  const { filename, tag } = getEstrelaMetadata(filePath);
-
+  const filename = getEstrelaFilename(filePath);
   const ms = new MagicString(code);
-  const source = createSource(`<>${code}</>`);
-  const { script, style, jsxElements, jsxExpressions } = getElements(
-    source,
-    true
-  );
+
+  const script = findTag('script', code);
+  const style = findTag('style', code);
+  const template = findTag('template', code);
 
   if (script) {
-    const startRange = Range.fromNode(script.openingElement, source);
-    const endRange = Range.fromNode(script.closingElement, source);
-    const scriptAttributes = getElementAttributes(script);
-    const shift = script.openingElement.getEnd() + 2;
-    const scriptContent = script.children
-      .map(node => node.getFullText(source))
-      .join('');
-    const scriptReplaces = preprocessScript(
-      scriptAttributes.tag || tag || '',
-      scriptContent
+    const openingIndex = code.indexOf(script.opening);
+    const closingIndex = code.indexOf(script.closing);
+    const contentIndex = openingIndex + script.opening.length;
+    const replaces = preprocessScript(
+      script.attributes.tag ?? filename,
+      script.content
     );
 
     ms.overwrite(
-      startRange.shift(-2).start,
-      startRange.shift(-2).end,
+      openingIndex,
+      openingIndex + script.opening.length,
       'import { defineElement, html } from "estrela";'
     );
 
-    scriptReplaces.forEach(range => {
+    replaces.forEach(range => {
       if (range.end === undefined) {
-        ms.appendLeft(range.start + shift, range.content);
+        ms.appendLeft(range.start + contentIndex, range.content);
       } else {
-        ms.overwrite(range.start + shift, range.end + shift, range.content);
+        ms.overwrite(
+          range.start + contentIndex,
+          range.end + contentIndex,
+          range.content
+        );
       }
     });
 
     ms.overwrite(
-      endRange.shift(-2).start,
-      endRange.shift(-2).end,
+      closingIndex,
+      closingIndex + script.closing.length,
       'return () => html`'
     );
   } else {
     ms.prepend(
       'import { defineElement, html } from "estrela";\n' +
-        `defineElement("${tag}", () => {\n` +
+        `defineElement("${filename}", () => {\n` +
         'return () => html`\n'
     );
   }
 
-  // append render close
-  ms.append('\n`;\n}');
+  if (template) {
+  } else {
+    const start = script
+      ? code.indexOf(script.fullContent) + script.fullContent.length
+      : 0;
+    const end = style ? code.indexOf(style.fullContent) : undefined;
+    const scopedTemplate = code.slice(start, end);
+    const shift = code.indexOf(scopedTemplate) - 2;
+    const source = createSource(`<>${scopedTemplate}</>`);
+    const { jsxElements, jsxExpressions } = getElements(source, true);
 
-  if (style) {
-    const styleRange = Range.fromNode(style, source);
-    const styleContent = style.children
-      .map(node => node.getFullText(source))
-      .join('');
-    ms.remove(styleRange.shift(-2).start, styleRange.shift(-2).end);
-    ms.append(', `\n' + styleContent + '`');
+    // prepend "$" on jsx expressions braces.
+    jsxExpressions.forEach(range => {
+      ms.prependLeft(range.shift(shift).start, '$');
+    });
 
-    // TODO: keep style in html when it has jsx expressions
+    // add html directive for jsx elements.
+    jsxElements.forEach(range => {
+      ms.prependLeft(range.shift(shift).start, ' html`');
+      ms.appendRight(range.shift(shift).end, '`');
+    });
   }
 
-  // append defineElement close
-  ms.append(');');
+  if (style) {
+    const openingIndex = code.indexOf(style.opening);
+    const closingIndex = code.indexOf(style.closing);
 
-  // prepend "$" on jsx expressions braces.
-  jsxExpressions.forEach(range => {
-    ms.prependLeft(range.shift(-2).start, '$');
-  });
+    ms.overwrite(
+      openingIndex,
+      openingIndex + style.opening.length,
+      '\n`;\n}, `\n'
+    );
 
-  // add html directive for jsx elements.
-  jsxElements.forEach(range => {
-    ms.prependLeft(range.shift(-2).start, ' html`');
-    ms.appendRight(range.shift(-2).end, '`');
-  });
-
-  // tried to trim lines
-  // ms.toString()
-  //   .split('\n')
-  //   .reduce((index, line) => {
-  //     const trimedLine = line.trimStart();
-  //     const charCount = line.length - trimedLine.length;
-  //     if (charCount > 0) {
-  //       ms.remove(index, index + charCount);
-  //       return index + line.length;
-  //     }
-  //     return index + 1;
-  //   }, 0);
+    ms.overwrite(closingIndex, closingIndex + style.closing.length, '`);');
+  } else {
+    // close html and open css
+    ms.append('\n`;\n});');
+  }
 
   return {
     code: ms.toString(),

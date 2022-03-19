@@ -175,28 +175,42 @@ describe('preprocessFile', () => {
     expect(linesExtractor(code)).toEqual(linesExtractor(expected));
   });
 
-  test('with declared promise', () => {
+  test('with typed declarations', () => {
     const file = 'app.estrela';
-    const content = `<script tag="app-greeter">
-    import { prop } from "estrela";
-    import { async, when } from "estrela/directives";
-
-    const name = prop<string>();
-
-    const greet = new Promise<string>(r => {
-      setTimeout(() => r('Welcome'), 5000);
-    });
-  </script>
-
-  <h1>
-    { async(greet) ?? 'Hello' }
-    { when(name() === 'Eduardo', 'o cara', name()) }!
-  </h1>
+    const content = `
+    <script tag="app-greeter">
+      import { prop } from "estrela";
+      import { async, when } from "estrela/directives";
+      const name = prop<string>();
+      const greet = new Promise<string>(r => {
+        setTimeout(() => r('Welcome'), 5000);
+      });
+    </script>
+    <h1>
+      { async(greet) ?? 'Hello' }
+      { when(name() === 'Eduardo', 'o cara', name()) }!
+    </h1>
   `;
 
     const { code } = preprocessFile(content, file);
 
-    const expected = ``;
+    const expected = `
+    import { defineElement, html } from "estrela";
+    import { prop } from "estrela";
+    import { async, when } from "estrela/directives";
+    defineElement("app-greeter", () => {
+      const name = prop<string>({ key: "name" });
+      const greet = new Promise<string>(r => {
+        setTimeout(() => r('Welcome'), 5000);
+      });
+      return () => html\`
+        <h1>
+          \${ async(greet) ?? 'Hello' }
+          \${ when(name() === 'Eduardo', 'o cara', name()) }!
+        </h1>
+      \`;
+    });
+`;
 
     expect(linesExtractor(code)).toEqual(linesExtractor(expected));
   });
