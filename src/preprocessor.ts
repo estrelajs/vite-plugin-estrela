@@ -174,8 +174,8 @@ export function preprocessFile(code: string, filePath: string) {
     code: ms.toString(),
     map: ms.generateMap({
       hires: true,
-      source: filename,
-      file: filename + '.map',
+      source: filePath,
+      file: filePath + '.map',
       includeContent: true,
     }),
   };
