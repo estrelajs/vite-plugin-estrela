@@ -37,25 +37,24 @@ export function preprocessScript(tag: string, script: string): CodeReplace[] {
           ts.isIdentifier(node.name)
         ) {
           const key = node.name.text;
-          const callArg = node.initializer.arguments[0];
-          const optionsArg = callArg
+          const expression = node.initializer.getText(source);
+          const [initialValue, callArg] = node.initializer.arguments;
+          const value = initialValue
+            ? initialValue.getText(source)
+            : 'undefined';
+          const options = callArg
             ? `{ key: "${key}", ...${callArg.getText(source)} }`
             : `{ key: "${key}" }`;
 
-          if (callArg) {
-            const range = Range.fromNode(callArg, source);
-            codeReplaces.push({
-              start: range.start,
-              end: range.end,
-              content: optionsArg,
-            });
-          } else {
-            const range = Range.fromNode(node.initializer, source);
-            codeReplaces.push({
-              start: range.shift(-1).end,
-              content: optionsArg,
-            });
-          }
+          const start = expression.indexOf('(');
+          const end = expression.lastIndexOf(')') + 1;
+
+          const range = Range.fromNode(node.initializer, source);
+          codeReplaces.push({
+            start: range.shift(start).start,
+            end: range.shift(end).start,
+            content: `(${value}, ${options})`,
+          });
         }
       });
     };
