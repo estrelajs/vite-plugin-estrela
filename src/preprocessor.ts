@@ -27,33 +27,39 @@ export function preprocessScript(tag: string, script: string): CodeReplace[] {
   if (importMap['estrela']?.imports) {
     const declarations = getVariableDeclarations(source);
 
-    const parseOptionsFor = (key: 'emitter' | 'prop') => {
+    const parseOptionsFor = (directive: 'emitter' | 'prop') => {
       declarations.forEach(node => {
         if (
           node.initializer &&
           ts.isCallExpression(node.initializer) &&
           ts.isIdentifier(node.initializer.expression) &&
-          node.initializer.expression.text === key &&
+          node.initializer.expression.text === directive &&
           ts.isIdentifier(node.name)
         ) {
           const key = node.name.text;
           const expression = node.initializer.getText(source);
           const [initialValue, callArg] = node.initializer.arguments;
-          const value = initialValue
-            ? initialValue.getText(source)
-            : 'undefined';
-          const options = callArg
-            ? `{ key: "${key}", ...${callArg.getText(source)} }`
+          const value = initialValue ? initialValue.getText(source) : undefined;
+          let callArgValue = callArg ? callArg.getText(source) : undefined;
+
+          if (directive === 'emitter') {
+            callArgValue = value;
+          }
+
+          const options = callArgValue
+            ? `{ key: "${key}", ...${callArgValue} }`
             : `{ key: "${key}" }`;
+          const content =
+            directive === 'emitter' ? `(${options})` : `(${value}, ${options})`;
 
           const start = expression.indexOf('(');
           const end = expression.lastIndexOf(')') + 1;
-
           const range = Range.fromNode(node.initializer, source);
+
           codeReplaces.push({
             start: range.shift(start).start,
             end: range.shift(end).start,
-            content: `(${value}, ${options})`,
+            content,
           });
         }
       });

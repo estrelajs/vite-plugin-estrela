@@ -1,6 +1,6 @@
 {
   "name": "vite-plugin-estrela",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "A vite plugin to process estrela files",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -9,6 +9,7 @@
     "clean": "rimraf dist",
     "compile": "esbuild src/index.ts --bundle --platform=node --external:typescript  --external:vite --outfile=dist/index.js",
     "coverage": "jest --coverage",
+    "prepublish": "yarn build",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:debug": "node --nolazy --inspect-brk ./node_modules/.bin/jest --runInBand --no-cache --watch"

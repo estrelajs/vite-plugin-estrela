@@ -192,4 +192,108 @@ describe('preprocessFile', () => {
 
     expect(linesExtractor(code)).toEqual(linesExtractor(expected));
   });
+
+  test('with prop and key', () => {
+    const file = 'app.estrela';
+    const content = `
+    <script tag="app-greeter">
+      import { prop } from "estrela";
+      const name = prop<string>(undefined, { key: "test" });
+    </script>
+    <h1>Hello { name }!</h1>
+  `;
+
+    const { code } = preprocessFile(content, file);
+
+    const expected = `
+    import { defineElement, html } from "estrela";
+    import { prop } from "estrela";
+    defineElement("app-greeter", host => {
+      const name = prop<string>(undefined, { key: "name", ...{ key: "test" } });
+      return () => html\`
+        <h1>Hello \${ name }!</h1>
+      \`;
+    });
+`;
+
+    expect(linesExtractor(code)).toEqual(linesExtractor(expected));
+  });
+
+  test('with empty prop', () => {
+    const file = 'app.estrela';
+    const content = `
+    <script tag="app-greeter">
+      import { prop } from "estrela";
+      const name = prop<string>();
+    </script>
+    <h1>Hello { name }!</h1>
+  `;
+
+    const { code } = preprocessFile(content, file);
+
+    const expected = `
+    import { defineElement, html } from "estrela";
+    import { prop } from "estrela";
+    defineElement("app-greeter", host => {
+      const name = prop<string>(undefined, { key: "name" });
+      return () => html\`
+        <h1>Hello \${ name }!</h1>
+      \`;
+    });
+`;
+
+    expect(linesExtractor(code)).toEqual(linesExtractor(expected));
+  });
+
+  test('with emitter', () => {
+    const file = 'app.estrela';
+    const content = `
+    <script tag="app-greeter">
+      import { emitter } from "estrela";
+      const name = emitter<string>();
+    </script>
+    <h1>Hello World!</h1>
+  `;
+
+    const { code } = preprocessFile(content, file);
+
+    const expected = `
+    import { defineElement, html } from "estrela";
+    import { emitter } from "estrela";
+    defineElement("app-greeter", host => {
+      const name = emitter<string>({ key: "name" });
+      return () => html\`
+        <h1>Hello World!</h1>
+      \`;
+    });
+`;
+
+    expect(linesExtractor(code)).toEqual(linesExtractor(expected));
+  });
+
+  test('with emitter key', () => {
+    const file = 'app.estrela';
+    const content = `
+    <script tag="app-greeter">
+      import { emitter } from "estrela";
+      const name = emitter<string>({ key: "test" });
+    </script>
+    <h1>Hello World!</h1>
+  `;
+
+    const { code } = preprocessFile(content, file);
+
+    const expected = `
+    import { defineElement, html } from "estrela";
+    import { emitter } from "estrela";
+    defineElement("app-greeter", host => {
+      const name = emitter<string>({ key: "name", ...{ key: "test" } });
+      return () => html\`
+        <h1>Hello World!</h1>
+      \`;
+    });
+`;
+
+    expect(linesExtractor(code)).toEqual(linesExtractor(expected));
+  });
 });
